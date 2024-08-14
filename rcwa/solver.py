@@ -5,8 +5,10 @@ from rcwa import Layer, LayerStack, Results
 from copy import deepcopy
 from progressbar import ProgressBar, Bar, Counter, ETA
 from itertools import product
+import autograd.numpy as np
 
-
+USEGRAD = 0
+DEBUG_HARMONICS = 1
 class Solver:
     """ Main class that invokes all methods necessary to solve an RCWA/TMM simulation
 
@@ -15,6 +17,7 @@ class Solver:
     :param n_harmonics: The number of harmonics in x, y to simulate (number of Fourier components). For planar films this should be 1. For 1D diffraction gratings this should be a single integer. For 2D periodic films this should be a 2-tuple. Must be an odd number.
     """
     def __init__(self, layer_stack, source, n_harmonics=1):
+        n_harmonics = DEBUG_HARMONICS
         self.atol = None
         self.rtol = None
         self.max_iters = None
@@ -26,10 +29,15 @@ class Solver:
         self.source.layer = layer_stack.incident_layer
         self.layer_stack.source = source
 
+        print(31)
         self._initialize()
+        print(33)
         self._k_matrices()
+        print(35)
         self._gap_matrices()
+        print(37)
         self._outer_matrices()
+        print(39)
         self.results = []
 
     def solve(self, *sweep_args, max_iters=50, atol=1e-3, rtol=1e-2, check_convergence=False, **sweep_kw):
@@ -70,7 +78,6 @@ class Solver:
                 self._rt_quantities()
                 self.iters += 1
                 self.converged = self._check_converged()
-
                 if not self.converged:
                     self.last_RTot = self.RTot
                     self._increase_harmonics()
@@ -229,7 +236,6 @@ class Solver:
                     new_results[key].append(sweep[i])
         else:
             new_results = self.results[0]
-
         new_results = Results(new_results)
         return new_results
 
@@ -238,12 +244,23 @@ class Solver:
         Packages the results from the simulation into a dictionary
         """
         tempResults = {}
+        # These next values should be gradient-dependent. Why are they not being copied?
         tempResults['rx'], tempResults['ry'], tempResults['rz'] = deepcopy((self.rx, self.ry, self.rz))
         tempResults['tx'], tempResults['ty'], tempResults['tz'] = deepcopy((self.tx, self.ty, self.tz))
         tempResults['R'], tempResults['T'] = deepcopy((self.R, self.T))
         tempResults['RTot'], tempResults['TTot'], tempResults['conservation'] = \
                 deepcopy((self.RTot, self.TTot, self.conservation))
+        if USEGRAD:
+            permittivityCellDataTensor = self.base_crystal.permittivityCellData.clone()
+            permeabilityCellDataTensor = self.base_crystal.permeabilityCellData.clone()
+            self.base_crystal.permittivityCellData = None
+            self.base_crystal.permeabilityCellData = None
+
         tempResults['crystal'] = deepcopy(self.base_crystal)
+        if USEGRAD:
+            tempResults['crystal'].permittivityCellData = permittivityCellDataTensor
+            tempResults['crystal'].permeabilityCellData = permeabilityCellDataTensor
+
         tempResults['source'] = deepcopy(self.source)
         tempResults['S'] = deepcopy(self.SGlobal)
         tempResults['Si'] = deepcopy(self.Si)
@@ -323,9 +340,16 @@ class Solver:
         self.tx, self.ty, self.tz = None, None, None
         self.R, self.T, self.RTot, self.TTot, self.CTot = None, None, None, None, None
         self.Si = [None for _ in range(len(self.layer_stack.internal_layers))]
-
+        print("Initialized r* matrices")
         self._couple_source()
+        print(358)
+        '''
+        Each layer lets self.er be 
+        '''
         self.layer_stack.set_convolution_matrices(self.n_harmonics)
+        print(360)
         self._k_matrices()
-        self._gap_matrices()
+        print(361)
+        self._gap_matrices() # This is where the issue is
+        print(364)
         self._outer_matrices()

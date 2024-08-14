@@ -1,12 +1,16 @@
-import numpy as np
+import autograd.numpy as np
+import numpy as npa
 import scipy as sp
 import scipy.linalg
 import math
+import torch
+
+USEGRAD = 0
 
 inv = np.linalg.inv;
 matrixExponentiate = sp.linalg.expm
 matrixSquareRoot = sp.linalg.sqrtm
-sqrt = np.lib.scimath.sqrt; # Takes sqrt of complex numbers successfully
+sqrt = npa.lib.scimath.sqrt; # Takes sqrt of complex numbers successfully
 sq = np.square;
 eig = sp.linalg.eig # Performs eigendecomposition of identity intuitively (vectors are unit vectors)
 norm = np.linalg.norm;
@@ -23,12 +27,19 @@ imag = np.imag
 deg = pi / 180
 prod = np.prod
 
-def fftn(data):
-    """ Return the shifted version so the zeroth-order harmonic is in the center with
-    energy-conserving normalization """
-    dataShape = data.shape;
-    return np.fft.fftshift(np.fft.fftn(data)) / np.prod(dataShape);
-
+if USEGRAD:
+    def fftn(data):
+        # Use PyTorch's fft.fftn function to perform the FFT and normalize the result
+        fft_result = torch.fft.fftn(data)
+        shifted_fft_result = torch.fft.fftshift(fft_result)
+        # Normalize by the product of the dimensions to conserve energy
+        return shifted_fft_result / data.numel()
+else:
+    def fftn(data):
+        """ Return the shifted version so the zeroth-order harmonic is in the center with
+        energy-conserving normalization """
+        dataShape = data.shape;
+        return np.fft.fftshift(np.fft.fftn(data)) / np.prod(dataShape);
 def complexArray(arrayInListForm):
     """ Wrapper for numpy array declaration that forces arrays to be complex doubles """
     return np.array(arrayInListForm, dtype=np.cdouble);
@@ -38,13 +49,21 @@ def complexIdentity(matrixSize):
     if matrixSize == 1:
         return 1
     else:
+        if USEGRAD:
+            return torch.eye(matrixSize);
         return np.identity(matrixSize, dtype=np.cdouble);
 
-def complexZeros(matrixDimensionsTuple):
-    """ Wrapper for numpy zeros declaration that forces arrays to be complex doubles """
-    return np.zeros(matrixDimensionsTuple, dtype=np.cdouble);
-
+if USEGRAD:
+    def complexZeros(matrixDimensionsTuple):
+        """ Wrapper for numpy zeros declaration that forces arrays to be complex doubles """
+        return torch.zeros(matrixDimensionsTuple)
+else:
+    def complexZeros(matrixDimensionsTuple):
+        """ Wrapper for numpy zeros declaration that forces arrays to be complex doubles """
+        return np.zeros(matrixDimensionsTuple, dtype=np.cdouble);
 def complexOnes(matrixDimensionsTuple):
+    if USEGRAD:
+        return torch.ones(matrixDimensionsTuple);
     return np.ones(matrixDimensionsTuple, dtype=np.cdouble);
 
 def reshapeLowDimensionalData(data):
@@ -104,7 +123,10 @@ def numpyArrayFromFile(filename):
             if i == 0:
                 data = rowOfComplexNumbers
             else:
-                data = np.vstack((data, rowOfComplexNumbers))
+                if USEGRAD:
+                    data = torch.vstack((data, rowOfComplexNumbers))
+                else:
+                    data = np.vstack((data, rowOfComplexNumbers))
             i += 1
 
     fileHandle.close()

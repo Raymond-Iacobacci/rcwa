@@ -1,5 +1,5 @@
 from rcwa.shorthand import complexArray
-import numpy as np
+import autograd.numpy as np
 from numpy.typing import ArrayLike
 from typing import Union
 
@@ -13,8 +13,8 @@ class Crystal:
     :param lattice_vectors: Real-space lattice vectors
     """
     def __init__(self, *lattice_vectors,
-                 er: Union[ArrayLike, float] = 1,
-                 ur: Union[ArrayLike, float] = 1):
+                 er: Union[ArrayLike, complex] = 1,
+                 ur: Union[ArrayLike, complex] = 1):
         self.permeabilityCellData = ur
         self.permittivityCellData = er
 

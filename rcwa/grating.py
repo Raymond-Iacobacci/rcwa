@@ -1,5 +1,5 @@
 from rcwa import Layer, Slicer, Crystal
-import numpy as np
+import autograd.numpy as np
 from typing import Union, Tuple
 from numpy.typing import ArrayLike
 

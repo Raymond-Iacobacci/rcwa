@@ -2,7 +2,7 @@
 I think the way this currently works is too convoluted. It needs to be refactored to be understandable.
 
 """
-import numpy as np
+import autograd.numpy as np
 import pandas as pd
 import rcwa
 import os

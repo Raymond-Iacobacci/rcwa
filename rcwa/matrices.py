@@ -3,6 +3,8 @@ from autograd import numpy as np
 from numpy.typing import ArrayLike
 from typing import Union
 
+USEGRAD = 0
+
 def s_incident(source, n_harmonics: Union[int, ArrayLike]):
     totalNumberHarmonics = np.prod(n_harmonics)
     return np.hstack((source.pX * kroneckerDeltaVector(totalNumberHarmonics),
@@ -36,7 +38,9 @@ def B_matrix(Wi, Wj, Vi, Vj):
     return np.linalg.inv(Wi) @ Wj - inv(Vi) @ Vj;
 
 def D_matrix(Ai, Bi, Xi):
+    print(f"This is Ai before we invert it:\n{Ai}")
     AiInverse = np.linalg.inv(Ai);
+    print(f"This is Ai after we invert it:\n{AiInverse}")
     return Ai - Xi @ Bi @ AiInverse @ Xi @ Bi;
 
 def D_matrix_redheffer(SA, SB):
@@ -48,8 +52,7 @@ def F_matrix(SA, SB):
 
 def calculateInternalSMatrixFromRaw(Ai, Bi, Xi, Di):
     AiInverse = np.linalg.inv(Ai)
-    DiInverse = np.linalg.inv(Di);
-
+    DiInverse = np.linalg.inv(Di)
     S11 = DiInverse @ (Xi @ Bi @ AiInverse @ Xi @ Ai - Bi)
     S12 = DiInverse @ Xi @ (Ai - Bi @ AiInverse @ Bi)
     S21 = S12
@@ -196,15 +199,23 @@ class MatrixCalculator:
         return P
 
     def _P_matrix_general(self):
-        erInverse = np.linalg.inv(self.er)
+        print("Before: ",self.Kx.shape,self.er.shape,self.Ky.shape)
+        if not self.er.shape:
+            print(f"This is the permittivity: {self.er}")
+            # erInverse = np.ones((4,4), dtype = np.complex_) * 1/self.er
+            erInverse = np.ones((self.Kx.shape[0], self.Ky.shape[0]), dtype = np.complex_) / self.er
+        else:
+            erInverse = np.squeeze(np.linalg.inv([[self.er]])) # fix this is the fix for single
+        # erInverse = np.linalg.inv(self.er)
         KMatrixDimension = self.Kx.shape[0]
         matrixShape = (2 *KMatrixDimension, 2 * KMatrixDimension)
         P = complexZeros(matrixShape)
-
+        
         P[:KMatrixDimension,:KMatrixDimension] = self.Kx @ erInverse @ self.Ky
         P[:KMatrixDimension,KMatrixDimension:] = self.ur - self.Kx @ erInverse @ self.Kx
         P[KMatrixDimension:,:KMatrixDimension] = self.Ky @ erInverse @ self.Ky - self.ur
         P[KMatrixDimension:,KMatrixDimension:] = - self.Ky @ erInverse @ self.Kx
+        print(f"This is P\n{P}")
         return P
 
     def Q_matrix(self):
@@ -218,20 +229,34 @@ class MatrixCalculator:
 
     def _Q_matrix_homogenous(self):
         Q = complexZeros((2,2));
-
         Q[0,0] = self.Kx * self.Ky;
+        print(self.er,self.ur,self.Kx,sq(self.Kx))
         Q[0,1] = self.er*self.ur - sq(self.Kx);
         Q[1,0] = sq(self.Ky) - self.er*self.ur;
         Q[1,1] = - self.Kx * self.Ky;
         Q = Q / self.ur;
         return Q;
-
+if USEGRAD:
     def _Q_matrix_general(self):
-        urInverse = np.linalg.inv(self.ur)
+        print(f"_Q_matrix_general-->ur.shape: {self.ur.shape}")
+        urInverse = torch.linalg.inv(self.ur) # ur 0-dim
         KMatrixDimension = self.Kx.shape[0]
         matrixShape = (2 *KMatrixDimension, 2 * KMatrixDimension)
         Q = complexZeros(matrixShape)
-
+        # urInverse = np.zeros(shape=(1,1)) + 1
+        Q[:KMatrixDimension,:KMatrixDimension] = self.Kx @ urInverse @ self.Ky
+        Q[:KMatrixDimension,KMatrixDimension:] = self.er - self.Kx @ urInverse @ self.Kx
+        Q[KMatrixDimension:,:KMatrixDimension] = self.Ky @ urInverse @ self.Ky - self.er
+        Q[KMatrixDimension:,KMatrixDimension:] = - self.Ky @ urInverse @ self.Kx
+        return Q
+else:
+    def _Q_matrix_general(self):
+        print(f"_Q_matrix_general-->ur.shape: {self.ur.shape}")
+        urInverse = np.linalg.inv(self.ur) # ur 0-dim
+        KMatrixDimension = self.Kx.shape[0]
+        matrixShape = (2 *KMatrixDimension, 2 * KMatrixDimension)
+        Q = complexZeros(matrixShape)
+        # urInverse = np.zeros(shape=(1,1)) + 1
         Q[:KMatrixDimension,:KMatrixDimension] = self.Kx @ urInverse @ self.Ky
         Q[:KMatrixDimension,KMatrixDimension:] = self.er - self.Kx @ urInverse @ self.Kx
         Q[KMatrixDimension:,:KMatrixDimension] = self.Ky @ urInverse @ self.Ky - self.er
@@ -250,7 +275,16 @@ class MatrixCalculator:
 
     def lambda_matrix(self):
         Kz = self.Kz_forward() # I am a little unsure about this particular line. Why is Kz_backward never used?
-
+        if USEGRAD:
+            if torch.is_tensor(Kz):
+                KzDimension = Kz.shape[0]
+                LambdaShape = (KzDimension*2, KzDimension*2)
+                Lambda = complexZeros(LambdaShape)
+                Lambda[:KzDimension, :KzDimension] = 1j*Kz
+                Lambda[KzDimension:, KzDimension:] = 1j*Kz
+                return Lambda
+            else:
+                return complexIdentity(2)* (0 + 1j)*Kz;
         if isinstance(Kz, np.ndarray):
             KzDimension = Kz.shape[0]
             LambdaShape = (KzDimension*2, KzDimension*2)
@@ -262,14 +296,27 @@ class MatrixCalculator:
             return complexIdentity(2)* (0 + 1j)*Kz;
 
     def Kz_backward(self):
+        if USEGRAD:
+            if torch.is_tensor(self.Kx):
+                return -conj(sqrt(conj(self.er*self.ur)*complexIdentity(self.Kx.shape[0]) - self.Kx @ self.Kx - self.Ky @ self.Ky))
+            else:
+                return sqrt(self.er*self.ur - sq(self.Kx) - sq(self.Ky))
         if isinstance(self.Kx, np.ndarray):
             return -conj(sqrt(conj(self.er*self.ur)*complexIdentity(self.Kx.shape[0]) - self.Kx @ self.Kx - self.Ky @ self.Ky))
         else:
             return sqrt(self.er*self.ur - sq(self.Kx) - sq(self.Ky))
 
     def Kz_forward(self):
+        if USEGRAD:
+            if torch.is_tensor(self.Kx):
+                x= conj(sqrt(conj(self.er*self.ur)*complexIdentity(self.Kx.shape[0]) - self.Kx @ self.Kx - self.Ky @ self.Ky))
+                return x
+            else:
+                return sqrt(self.er*self.ur - sq(self.Kx) - sq(self.Ky))
         if isinstance(self.Kx, np.ndarray):
-            return conj(sqrt(conj(self.er*self.ur)*complexIdentity(self.Kx.shape[0]) - self.Kx @ self.Kx - self.Ky @ self.Ky))
+            # print(type(self.er),type(self.ur))
+            x= conj(sqrt(conj(self.er*self.ur)*complexIdentity(self.Kx.shape[0]) - self.Kx @ self.Kx - self.Ky @ self.Ky))
+            return x
         else:
             return sqrt(self.er*self.ur - sq(self.Kx) - sq(self.Ky))
 
@@ -291,9 +338,8 @@ class MatrixCalculator:
         O = self.lambda_matrix()
         OInverse = np.linalg.inv(O)
         W = complexIdentity(2)
-        X = matrixExponentiate(O * self.source.k0 * self.thickness)
+        X = matrixExponentiate(O * self.source.k0 * self.thickness) # added the negative to match the homogenous calculation
         V = Q @ W @ OInverse
-
         return (V, W, O, X)
 
     def _VWLX_matrices_general(self):
@@ -307,24 +353,25 @@ class MatrixCalculator:
             LambdaInverse = np.linalg.inv(Lambda)
             W = complexIdentity(2 * Kz.shape[0])
             V = Q @ W @ LambdaInverse
-            X = matrixExponentiate(-Lambda * self.source.k0 * self.thickness)
+            X = matrixExponentiate(Lambda * self.source.k0 * self.thickness)
             return (V, W, Lambda, X)
         else:
             eigenValues, W = eig(OmegaSquared)
             Lambda = np.diag(sqrt(eigenValues))
             LambdaInverse = np.diag(np.reciprocal(sqrt(eigenValues)))
             V = Q @ W @ LambdaInverse
-            X = matrixExponentiate(-Lambda * self.source.k0 * self.thickness)
+            X = matrixExponentiate(Lambda * self.source.k0 * self.thickness)
             return (V, W, Lambda, X)
 
     def S_matrix(self):
         if self.thickness > 0:
             return self._S_matrix_internal()
         elif self.thickness == 0:
-
             if self.incident:
+                print("Incident angle")
                 return self._S_matrix_reflection()
             elif self.transmission:
+                print("Transmission angle")
                 return self._S_matrix_transmission()
             else:
                 raise ValueError('''Semi-infinite film appears to be neither incident or transmissive. 
@@ -332,11 +379,16 @@ class MatrixCalculator:
 
     def _S_matrix_internal(self):
         (Vi, Wi, _, Xi) = self.VWLX_matrices()
+        print(f"This is the max of Vi:{np.max(Vi)}")
+        print(f"This is the max of Xi:{np.max(Xi)}")
         Ai = A_matrix(Wi, self.Wg, Vi, self.Vg)
+        print(f"This is the max of Ai:{np.max(Ai)}")
         Bi = B_matrix(Wi, self.Wg, Vi, self.Vg)
+        print(f"This is the max of Bi:{np.max(Bi)}")
         Di = D_matrix(Ai, Bi, Xi)
-
+        print(f"This is the max of Di:{np.max(Di)}")
         Si = calculateInternalSMatrixFromRaw(Ai, Bi, Xi, Di);
+        print(f"This is the max of Si:{np.max(Si)}")
         return Si;
 
     def _S_matrix_reflection(self):

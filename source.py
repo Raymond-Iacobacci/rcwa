@@ -13,7 +13,7 @@ class Source:
     :param pTEM: Polarization vector for TE/TM polarization fraction (can be complex)
     :param layer: Layer source is located in
     """
-    def __init__(self, wavelength=2*pi, theta=0, phi=0, pTEM=[1, 1], layer=Layer(er=1, ur=1)):
+    def __init__(self, wavelength=2*pi, theta=0, phi=0, pTEM=[1, 1], layer=Layer(er=torch.tensor(1, dtype = torch.cdouble), ur=torch.tensor(1, dtype = torch.cdouble))):
         self._free_space_wavelength = wavelength
         self.layer = layer
         self.k0 = 2*pi / self._free_space_wavelength

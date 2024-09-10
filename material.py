@@ -9,7 +9,9 @@ import os
 from rcwa.utils import CSVLoader, RIDatabaseLoader
 import warnings
 from numpy.typing import ArrayLike
+import torch
 
+USEGRAD = 1
 
 class Material:
     """
@@ -25,7 +27,7 @@ class Material:
     """
     database = RIDatabaseLoader()
 
-    def __init__(self, name=None, er=1, ur=1, n=None, database_path=None, filename=None, source=None):
+    def __init__(self, name=None, er=torch.tensor(1.0, dtype = torch.cdouble), ur=torch.tensor(1.0, dtype = torch.cdouble), n=None, database_path=None, filename=None, source=None):
         self.name = ''
         self.source = source
         self.dispersive = False
@@ -59,10 +61,16 @@ class Material:
             if n is None: # If the refractive index is not defined, go with the permittivity
                 self._er = er
                 self._ur = ur
-                self._n = np.sqrt(er*ur)
+                if USEGRAD:
+                    self._n = torch.sqrt(er * ur)
+                else:
+                    self._n = np.sqrt(er*ur)
             else: # If the refractive index is defined, ignore the permittivity and permeability
                 self._n = n
-                self._er = np.square(n)
+                if USEGRAD:
+                    self._er = torch.square(n) # We don't backpropagate over homogenous layers--we may need to change this in the future
+                else:
+                    self._er = np.square(n)
                 self._ur = 1
 
     def _set_dispersive_nk(self, data_dict):
@@ -109,7 +117,10 @@ class Material:
 
     @n.setter
     def n(self, n: float):
-        self._er = np.square(n)
+        if USEGRAD:
+            self._er = torch.square(n, use_gradient = True, dtype = torch.cdouble)
+        else:
+            self._er = np.square(n)
         self._ur = 1
 
     @property

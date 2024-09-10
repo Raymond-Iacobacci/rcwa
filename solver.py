@@ -7,7 +7,7 @@ from progressbar import ProgressBar, Bar, Counter, ETA
 from itertools import product
 import autograd.numpy as np
 
-USEGRAD = 0
+USEGRAD = 1
 DEBUG_HARMONICS = 1
 class Solver:
     """ Main class that invokes all methods necessary to solve an RCWA/TMM simulation
@@ -22,22 +22,23 @@ class Solver:
         self.rtol = None
         self.max_iters = None
         self.check_convergence = None
-
         self.n_harmonics = n_harmonics
+
         self.layer_stack = layer_stack
         self.source = source
         self.source.layer = layer_stack.incident_layer
         self.layer_stack.source = source
-
-        print(31)
+        print(f"This is whether the er is a tensor in _initialize INIT: {torch.is_tensor(self.layer_stack.incident_layer.er)}")
+        # print(31)
         self._initialize()
-        print(33)
+        # print(33)
+        print("This is still init, but it happens right after the _initialize function")
         self._k_matrices()
-        print(35)
+        # print(35)
         self._gap_matrices()
-        print(37)
+        # print(37)
         self._outer_matrices()
-        print(39)
+        # print(39)
         self.results = []
 
     def solve(self, *sweep_args, max_iters=50, atol=1e-3, rtol=1e-2, check_convergence=False, **sweep_kw):
@@ -90,6 +91,7 @@ class Solver:
 
         bar.finish()
         self.results = self._package_results()
+        print(dir(self.layer_stack))
         return self.results
 
     def fields(self, component='Ex', layer=None, x_min=0, x_max=0, y_min=0, y_max=0, z_min=0, z_max=0, N_x=1, N_y=1, N_z=1):
@@ -190,7 +192,7 @@ class Solver:
 
             if not hasattr(obj, var):
                 raise ValueError(f"""Object {obj} does not have attribute {var}.
-                                 Invalid sweep variable. Available default variables are 
+                                 Invalid sweep variable. Available default variables are
                                  "phi", "theta", "wavelength", "pTEM"'
                                  """)
             setattr(obj, var, val)
@@ -288,7 +290,7 @@ class Solver:
     def _s_element_dimension(self):
         s_dim = self._k_dimension * 2
         return s_dim
-        
+
     @property
     def _s_element_shape(self):
         s_dim = self._s_element_dimension
@@ -302,6 +304,7 @@ class Solver:
         Sets up the Kx, Ky, and Kz matrices for solving the simulation once the source, crystal, and
         number harmonics are known.
         """
+        print(f"This is whether the er is a tensor in _k_matrices: {torch.is_tensor(self.layer_stack.incident_layer.er)}")
         self.Kx = kx_matrix(self.source, self.base_crystal, self.n_harmonics)
         self.Ky = ky_matrix(self.source, self.base_crystal, self.n_harmonics)
         self.layer_stack.Kx = self.Kx
@@ -320,8 +323,10 @@ class Solver:
 
     def _inner_s_matrix(self):
         for i, layer in enumerate(self.layer_stack.internal_layers):
-            self.Si[i] = layer.S_matrix()
-            self.SGlobal = redheffer_product(self.SGlobal, self.Si[i])
+            self.Si[i] = layer.S_matrix() # TODO: find the location of creating the S_matrix per layer
+            print(f"\nThis is the {i}th layer\n")
+            print(f"\nThis is the shape of Si[0]: {self.Si[0].shape}")
+            self.SGlobal = redheffer_product(self.SGlobal, self.Si[i]) # NOTE: This is the problem
 
     def _global_s_matrix(self):
         self.STransmission = self.layer_stack.transmission_layer.S_matrix()
@@ -334,22 +339,25 @@ class Solver:
             self.TMMSimulation = True
         else:
             self.TMMSimulation = False
-
+        print(f"This is whether the er is a tensor in _initialize first: {torch.is_tensor(self.layer_stack.incident_layer.er)}")
         self.SGlobal = S_matrix_transparent(self._s_element_shape)
         self.rx, self.ry, self.rz = None, None, None
         self.tx, self.ty, self.tz = None, None, None
         self.R, self.T, self.RTot, self.TTot, self.CTot = None, None, None, None, None
         self.Si = [None for _ in range(len(self.layer_stack.internal_layers))]
-        print("Initialized r* matrices")
+        # print("Initialized r* matrices")
+        print(f"This is whether the er is a tensor in _initialize second: {torch.is_tensor(self.layer_stack.incident_layer.er)}")
         self._couple_source()
-        print(358)
+        # print(358)
         '''
-        Each layer lets self.er be 
+        Each layer lets self.er be
         '''
+        print(f"This is whether the er is a tensor in _initialize: {torch.is_tensor(self.layer_stack.incident_layer.er)}")
         self.layer_stack.set_convolution_matrices(self.n_harmonics)
-        print(360)
+        # print(360)
+        print("Initializing the solver")
         self._k_matrices()
-        print(361)
+        # print(361)
         self._gap_matrices() # This is where the issue is
-        print(364)
+        # print(364)
         self._outer_matrices()

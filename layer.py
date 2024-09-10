@@ -7,6 +7,9 @@ from matplotlib.figure import Figure, Axes
 
 # TODO: Convolution matrix generation must be refactored. It's a hot mess and hard to understand.
 
+USEGRAD = 1
+
+from time import sleep
 
 class Layer(MatrixCalculator):
     """
@@ -19,13 +22,19 @@ class Layer(MatrixCalculator):
     :param material: Material object containing the material's permittivity and permeability as a function of wavelength/angle.
     :param crystal: Crystal object if the layer is periodic in x and/or y. Overrides er, ur, n, and material
     """
-    def __init__(self, er: complex = 1.0, ur: complex = 1.0, thickness: complex = 0.0, n: Union[complex, None] = None,
+    def __init__(self, er: complex = torch.tensor(1.0, dtype = torch.cdouble), ur: complex = torch.tensor(1.0, dtype = torch.cdouble), thickness: complex = 0.0, n: Union[complex, None] = None,
                  material: Union[None, Material] = None, crystal: Union[None, Crystal] = None):
+        # TODO: this should not be set so flagrantly. Does this eliminate the er information?
         if material is None:
-            self.material = Material(er=er, ur=ur, n=n)
+            print(f"This is n: {n}")
+            if n:
+                n = torch.tensor(n, dtype = torch.cdouble)
+            self.material = Material(er=er, ur=ur, n=n) # Is this the issue?
+            print("Material is none")
         else:
+            print("Material is not none")
             self.material = material
-
+        print(f"This is whether the er is a tensor: {torch.is_tensor(self.er)}")
         self.thickness = thickness
         self.crystal = crystal
         self.incident = False  # Whether this is a transmission layer
@@ -72,41 +81,42 @@ class Layer(MatrixCalculator):
 
     def set_convolution_matrices(self, n_harmonics: Union[ArrayLike, int]):
         if self.crystal is not None:
-            print("CRYSTAL LAYER")
+            print("This is the first option") # NOTE: self.crystal.permittivityCellData
             self.er = self._convolution_matrix(self.crystal.permittivityCellData, n_harmonics)
             self.ur = self._convolution_matrix(self.crystal.permeabilityCellData, n_harmonics)
         else:
             print("NONCRYSTAL LAYER")
+            print(f"This is the self.er value: {torch.is_tensor(self.er)}")
             self.er = self.er * complexIdentity(prod(n_harmonics)) # First occurrence of breaking. Replace this function with a gradient-compatible function, or at least change it so that the gradient propagates.
+            print(f"This is the self.er value: {torch.is_tensor(self.er)}")
+            print(f"This is the complexIdentity value: {torch.is_tensor(complexIdentity(prod(n_harmonics)))}")
             self.ur = self.ur * complexIdentity(prod(n_harmonics))
 
     def _convolution_matrix(self, cellData: ArrayLike, n_harmonics: Union[ArrayLike, int]) -> ArrayLike:
+        print(f"This is the cell data variable: {cellData}")
         dimension = self.crystal.dimensions;
 
         if isinstance(n_harmonics, int):
             n_harmonics = (n_harmonics,)
 
         if dimension == 1:
-            print("First dimension")
             # n_harmonics = (n_harmonics + (1, 1))
             n_harmonics = (1, n_harmonics[0], 1) # fix for extra
-            print(n_harmonics)
         elif dimension == 2:
-            print("Second dimension")
             n_harmonics = (n_harmonics + (1,))
-        print("Finished?")
         (P, Q, R) = n_harmonics
-        print("Not that")
         convolutionMatrixSize = P*Q*R;
         convolutionMatrixShape = (convolutionMatrixSize, convolutionMatrixSize);
         convolutionMatrix = complexZeros(convolutionMatrixShape)
-        print(f"This is the shape before reshaping: {cellData.shape}")
+        print(f"This is the cell data object: {cellData}")
         cellData = reshapeLowDimensionalData(cellData);
         (Nx, Ny, Nz) = cellData.shape;
+
         zeroHarmonicsLocation = np.array([math.floor(Nx/2), math.floor(Ny/2), math.floor(Nz/2)])
-        print(f"Shape going into fast fourier transform: {cellData.shape}")
+        if USEGRAD:
+            zeroHarmonicsLocation = torch.from_numpy(zeroHarmonicsLocation)
+
         cellFourierRepresentation = fftn(cellData);
-        print(f"Shape coming out of fast fourier transform: {cellFourierRepresentation.shape}")
         for rrow in range(R):
             for qrow in range(Q):
                 for prow in range(P):
@@ -117,17 +127,17 @@ class Layer(MatrixCalculator):
                                 col = rcol*Q*P + qcol*P + pcol;
                                 # Get the desired harmonics relative to the 0th-order harmonic.
                                 desiredHarmonics = -np.array([prow - pcol, qrow - qcol, rrow - rcol])
-
+                                if USEGRAD:
+                                    desiredHarmonics = torch.from_numpy(desiredHarmonics)
                                 # Get those harmonic locations from the zero harmonic location.
                                 desiredHarmonicsLocation = zeroHarmonicsLocation + desiredHarmonics
-                                print("This is the desiredHarmonic Location:", desiredHarmonicsLocation)
-                                print(cellFourierRepresentation.shape)
                                 # update the convolutionmatrix to match this description of the filters
-                                convolutionMatrix[row][col] = cellFourierRepresentation[desiredHarmonicsLocation[0],desiredHarmonicsLocation[1], desiredHarmonicsLocation[2]];
-                                print("Gotten the locations")
-        print("No worries!")
+                                convolutionMatrix[row:row+1][col:col+1] = cellFourierRepresentation[desiredHarmonicsLocation[0]:desiredHarmonicsLocation[0]+1,desiredHarmonicsLocation[1]:desiredHarmonicsLocation[1]+1, desiredHarmonicsLocation[2]:desiredHarmonicsLocation[2]+1];
         if convolutionMatrix.shape == (1, 1):
-            convolutionMatrix = convolutionMatrix[0][0]
+            if USEGRAD:
+                convolutionMatrix = convolutionMatrix.squeeze(0).squeeze(0)
+            else:
+                convolutionMatrix = convolutionMatrix[0][0]
         return convolutionMatrix;
 
     def __eq__(self, other):
@@ -141,7 +151,7 @@ class Layer(MatrixCalculator):
         return f'Layer with\n\ter: {self.er}\n\tur: {self.ur}\n\tL: {self.thickness}\n\tn: {self.n}\n\tcrystal: {self.crystal}'
 
 
-freeSpaceLayer = Layer(1,1)
+freeSpaceLayer = Layer(torch.tensor(1, dtype = torch.cdouble),torch.tensor(1, dtype = torch.cdouble))
 
 
 class LayerStack:
@@ -153,8 +163,8 @@ class LayerStack:
     :param transmission_layer: Semi-infinite layer of transmission region. Defaults to free space
     """
     def __init__(self, *internal_layers: Layer,
-                 incident_layer: Layer = Layer(er=1, ur=1), transmission_layer: Layer = Layer(er=1, ur=1)):
-        self.gapLayer = Layer(er=1, ur=1)
+                 incident_layer: Layer = Layer(er=torch.tensor(1,dtype=torch.cdouble), ur=torch.tensor(1,dtype=torch.cdouble)), transmission_layer: Layer = Layer(er=torch.tensor(1,dtype=torch.cdouble), ur=torch.tensor(1,dtype=torch.cdouble))):
+        self.gapLayer = Layer(er=torch.tensor(1,dtype=torch.cdouble), ur=torch.tensor(1,dtype=torch.cdouble))
         self.incident_layer = incident_layer
         self.incident_layer.incident = True
         self.transmission_layer = transmission_layer
@@ -229,10 +239,13 @@ class LayerStack:
             self.gapLayer.ur = 1 + sq(self.Kx) + sq(self.Ky)
             # self.gapLayer.ur = torch.ones(size = self.Kx.shape)
             self.gapLayer.ur = np.ones(shape = self.Kx.shape)
-            
+
             Qg = self.gapLayer.Q_matrix()
 
             lambda_gap = self.gapLayer.lambda_matrix()
+            print("THIS IS THE FIRST OPTION")
+            print("This is the lambda matrix:")
+            print(lambda_gap)
 
         else:
             Kz = self.gapLayer.Kz_gap()
@@ -240,8 +253,13 @@ class LayerStack:
             lambda_gap = complexIdentity(self._k_dimension * 2)
             lambda_gap[:self._k_dimension, :self._k_dimension] = 1j * Kz
             lambda_gap[self._k_dimension:, self._k_dimension:] = 1j * Kz
+            print("THIS IS THE SECOND OPTION")
 
         self.Wg = complexIdentity(self._s_element_dimension)
+        print("-"*100)
+        print(lambda_gap.dtype)
+        print(Qg.dtype)
+        print("-"*100)
         self.Vg = Qg @ inv(lambda_gap)
 
         for layer in self.all_layers:
@@ -250,7 +268,9 @@ class LayerStack:
 
     # set all convolution matrices for all interior layers
     def set_convolution_matrices(self, n_harmonics: Union[int, ArrayLike]):
+        print("Is this being called?")
         for layer in self.internal_layers:
+            print(f"Checking per layer: {torch.is_tensor(layer.er)}")
             layer.set_convolution_matrices(n_harmonics)
 
     @property

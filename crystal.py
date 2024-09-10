@@ -2,7 +2,7 @@ from rcwa.shorthand import complexArray
 import autograd.numpy as np
 from numpy.typing import ArrayLike
 from typing import Union
-
+import torch
 
 class Crystal:
     """
@@ -17,7 +17,7 @@ class Crystal:
                  ur: Union[ArrayLike, complex] = 1):
         self.permeabilityCellData = ur
         self.permittivityCellData = er
-
+        print(f"Before we do anything else, this is the permittivity cell data: {torch.is_tensor(self.permittivityCellData)}")
         self.dimensions = len(lattice_vectors)
         raw_lattice_vectors = np.array(lattice_vectors)
         self.lattice_vectors = []

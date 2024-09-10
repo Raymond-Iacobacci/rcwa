@@ -5,13 +5,30 @@ import scipy.linalg
 import math
 import torch
 
-USEGRAD = 0
+USEGRAD = 1
 
-inv = np.linalg.inv;
-matrixExponentiate = sp.linalg.expm
-matrixSquareRoot = sp.linalg.sqrtm
-sqrt = npa.lib.scimath.sqrt; # Takes sqrt of complex numbers successfully
+if USEGRAD:
+    inv = torch.linalg.inv;
+else:
+    inv = np.linalg.inv;
+if USEGRAD:
+    matrixExponentiate = torch.linalg.matrix_exp
+else:
+    matrixExponentiate = sp.linalg.expm
+if USEGRAD:
+    def matrix_sqrt(A):
+        eigenvalues, eigenvectors = torch.linalg.eigh(A)
+        sqrt_eigenvalues = torch.sqrt(eigenvalues)
+        return eigenvectors @ torch.diag(sqrt_eigenvalues) @ eigenvectors.T
+    matrixSquareRoot = matrix_sqrt
+else:
+    matrixSquareRoot = sp.linalg.sqrtm
+if USEGRAD:
+    sqrt = torch.sqrt;
+else:
+    sqrt = npa.lib.scimath.sqrt; # Takes sqrt of complex numbers successfully
 sq = np.square;
+# sq = torch.square
 eig = sp.linalg.eig # Performs eigendecomposition of identity intuitively (vectors are unit vectors)
 norm = np.linalg.norm;
 sin = np.sin;
@@ -21,7 +38,10 @@ dot = np.dot;
 cross = np.cross;
 diag = np.diag
 diagonal = np.diagonal
-conj = np.conj
+if USEGRAD:
+    conj = torch.conj
+else:
+    conj = np.conj
 real = np.real
 imag = np.imag
 deg = pi / 180
@@ -44,19 +64,23 @@ def complexArray(arrayInListForm):
     """ Wrapper for numpy array declaration that forces arrays to be complex doubles """
     return np.array(arrayInListForm, dtype=np.cdouble);
 
-def complexIdentity(matrixSize):
+def complexIdentity(matrixSize):    # TODO: flip
     """ Wrapper for numpy identity declaration that forces arrays to be complex doubles """
     if matrixSize == 1:
+        if USEGRAD:
+            print("Using USEGRAD")
+            return torch.tensor(1, dtype = torch.cdouble)
+        print("NOT USING USEGRAD")
         return 1
     else:
         if USEGRAD:
-            return torch.eye(matrixSize);
+            return torch.eye(matrixSize, dtype = torch.cdouble);
         return np.identity(matrixSize, dtype=np.cdouble);
 
 if USEGRAD:
     def complexZeros(matrixDimensionsTuple):
         """ Wrapper for numpy zeros declaration that forces arrays to be complex doubles """
-        return torch.zeros(matrixDimensionsTuple)
+        return torch.zeros(matrixDimensionsTuple, dtype = torch.cdouble)
 else:
     def complexZeros(matrixDimensionsTuple):
         """ Wrapper for numpy zeros declaration that forces arrays to be complex doubles """
@@ -66,27 +90,50 @@ def complexOnes(matrixDimensionsTuple):
         return torch.ones(matrixDimensionsTuple);
     return np.ones(matrixDimensionsTuple, dtype=np.cdouble);
 
-def reshapeLowDimensionalData(data):
-    if hasattr(data, '__len__'):
-        dataShape = data.shape;
-    else:
-        dataShape = [1]
-        data = np.array([data])
+if USEGRAD:
+    def reshapeLowDimensionalData(data):
+        # print("THIS IS GETTING CALLED")
+        if hasattr(data, '__len__'):
+            dataShape = data.shape;
+        else:
+            dataShape = [1]
+            data = torch.tensor([data]) # NOTE: potentially replace with torch.stack, also check if the gradient remains active through the [] process
+        if(len(dataShape) == 1):
+            Nx = dataShape[0]
+            data = data.reshape(Nx, 1, 1)
+        elif(len(dataShape)==2):
+            Nx=dataShape[0];
+            Ny=dataShape[1];
+            data=data.reshape(Nx, Ny, 1);
+        elif(len(dataShape)==3):
+            data=data;
+        else:
+            raise ValueError(f"""Input data has too many ({len(dataShape)}) dimensions.
+                             Only designed for up to 3 spatial dimensions""");
+        return data
 
-    if(len(dataShape) == 1): # we have only x-data.
-        Nx = dataShape[0];
-        data = data.reshape(Nx, 1, 1);
-    elif(len(dataShape) == 2): # We have x and y data
+else:
+    def reshapeLowDimensionalData(data):
+        if hasattr(data, '__len__'):
+            dataShape = data.shape;
+        else:
+            dataShape = [1]
+            data = np.array([data])
+
+        if(len(dataShape) == 1): # we have only x-data.
             Nx = dataShape[0];
-            Ny = dataShape[1];
-            data = data.reshape(Nx, Ny, 1);
-    elif(len(dataShape) == 3): # We have x- y- and z-data (
-        data = data;
-    else:
-        raise ValueError(f"""Input data has too many ({len(dataShape)}) dimensions.
-        Only designed for up to 3 spatial dimensions""");
+            data = data.reshape(Nx, 1, 1);
+        elif(len(dataShape) == 2): # We have x and y data
+                Nx = dataShape[0];
+                Ny = dataShape[1];
+                data = data.reshape(Nx, Ny, 1);
+        elif(len(dataShape) == 3): # We have x- y- and z-data (
+            data = data;
+        else:
+            raise ValueError(f"""Input data has too many ({len(dataShape)}) dimensions.
+            Only designed for up to 3 spatial dimensions""");
 
-    return data;
+        return data;
 
 def kroneckerDeltaVector(size):
     vector = complexZeros(size)

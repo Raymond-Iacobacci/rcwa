@@ -3,22 +3,19 @@
         "activityBar.border": "#6f00ff",
         "scrollbarSlider.activeBackground": "#ff0000",
         "scrollbarSlider.hoverBackground": "#ffa600",
-        "activityBar.activeBackground": "#364d31",
-        "activityBar.inactiveForeground": "#d4ff00",
-        "activityBar.foreground": "#ff0000",
         "list.activeSelectionBackground": "#433838",
         "list.inactiveSelectionForeground": "#ff00d0",
         "list.activeSelectionForeground": "#ff0000",
-        "sideBar.border": "#6f00ff",
         "minimap.background": "#00000000",
         "editor.renderIndentGuides": "box",
         "editor.renderHorizontalSpacingAtTop": true,
-        "titleBar.activeForeground": "#ffdd00cc",
         "[Material Monokai High Contrast]": {
             "contrastActiveBorder": "#8c8c8c",
             "contrastBorder": "#808080"
         },
         "editor.background": "#44473909"
     },
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "off",
+    "editor.renderWhitespace": "all",
+    "indenticator.inner.showIndentGuide": true
 }

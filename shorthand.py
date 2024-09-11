@@ -27,17 +27,26 @@ if USEGRAD:
     sqrt = torch.sqrt;
 else:
     sqrt = npa.lib.scimath.sqrt; # Takes sqrt of complex numbers successfully
-sq = np.square;
-# sq = torch.square
+if USEGRAD:
+    sq = torch.square
+else:
+    sq = np.square;
 eig = sp.linalg.eig # Performs eigendecomposition of identity intuitively (vectors are unit vectors)
-norm = np.linalg.norm;
-sin = np.sin;
-cos = np.cos;
-pi = np.pi;
-dot = np.dot;
-cross = np.cross;
-diag = np.diag
-diagonal = np.diagonal
+if USEGRAD:
+    pi = torch.pi;
+    dot = torch.dot;
+    cross = torch.cross;
+    diag = torch.diag
+    diagonal = torch.diagonal
+else:
+    pi = np.pi;
+    dot = np.dot;
+    cross = np.cross;
+    diag = np.diag
+    diagonal = np.diagonal
+sin = np.sin
+cos = np.cos
+norm = np.linalg.norm
 if USEGRAD:
     conj = torch.conj
 else:

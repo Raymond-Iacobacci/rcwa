@@ -266,13 +266,22 @@ def calculateDiffractionReflectionEfficiency(rx, ry, rz, source, KzReflectionReg
     preMatrix = real(-1 /urReflectionRegion * KzReflectionRegion) / \
             real(source.k_incident[2] / urReflectionRegion)
     R = None
-    if isinstance(KzReflectionRegion, np.ndarray):
-        R = preMatrix @ (sq(np.abs(rx)) + sq(np.abs(ry)) + sq(np.abs(rz)))
-        RDimension = int(sqrt(rx.shape[0]))
-        if not np.isscalar(numberHarmonics):
-            R = R.reshape((RDimension, RDimension))
+    if not USEGRAD:
+        if isinstance(KzReflectionRegion, np.ndarray):
+            R = preMatrix @ (sq(np.abs(rx)) + sq(np.abs(ry)) + sq(np.abs(rz)))
+            RDimension = int(np.sqrt(rx.shape[0]))
+            if not np.isscalar(numberHarmonics):
+                R = R.reshape((RDimension, RDimension))
+        else:
+            R = -preMatrix * (sq(np.abs(rx)) + sq(np.abs(ry)) + sq(np.abs(rz)))
     else:
-        R = -preMatrix * (sq(np.abs(rx)) + sq(np.abs(ry)) + sq(np.abs(rz)))
+        if torch.is_tensor(KzReflectionRegion):
+            R = preMatrix @ (sq(torch.abs(rx)) + sq(torch.abs(ry)) + sq(torch.abs(rz)))
+            RDimension = int(np.sqrt(rx.shape[0]))
+            if not np.isscalar(numberHarmonics):
+                R = R.reshape((RDimension, RDimension))
+        else:
+            R = -preMatrix * (sq(torch.abs(rx)) + sq(torch.abs(ry)) + sq(torch.abs(rz)))
     return R
 
 def calculateDiffractionTransmissionEfficiency(tx, ty, tz, source, KzTransmissionRegion, layerStack,
@@ -281,14 +290,22 @@ def calculateDiffractionTransmissionEfficiency(tx, ty, tz, source, KzTransmissio
     urReflectionRegion = layerStack.incident_layer.ur
     preMatrix = real(1 / urTransmissionRegion * KzTransmissionRegion) / \
             real(source.k_incident[2] / urReflectionRegion)
-
-    if isinstance(KzTransmissionRegion, np.ndarray):
-        T = preMatrix @ (sq(np.abs(tx)) + sq(np.abs(ty)) + sq(np.abs(tz)))
-        TDimension = int(sqrt(tx.shape[0]))
-        if not np.isscalar(numberHarmonics):
-            T = T.reshape((TDimension, TDimension))
+    if USEGRAD:
+        if torch.is_tensor(KzTransmissionRegion):
+            T = preMatrix @ (sq(torch.abs(tx)) + sq(torch.abs(ty)) + sq(torch.abs(tz)))
+            TDimension = int(np.sqrt(tx.shape[0]))
+            if not np.isscalar(numberHarmonics):
+                T = T.reshape((TDimension, TDimension))
+        else:
+            T = preMatrix * (sq(torch.abs(tx)) + sq(torch.abs(ty)) + sq(torch.abs(tz)))
     else:
-        T = preMatrix * (sq(np.abs(tx)) + sq(np.abs(ty)) + sq(np.abs(tz)))
+        if isinstance(KzTransmissionRegion, np.ndarray):
+            T = preMatrix @ (sq(np.abs(tx)) + sq(np.abs(ty)) + sq(np.abs(tz)))
+            TDimension = int(sqrt(tx.shape[0]))
+            if not np.isscalar(numberHarmonics):
+                T = T.reshape((TDimension, TDimension))
+        else:
+            T = preMatrix * (sq(np.abs(tx)) + sq(np.abs(ty)) + sq(np.abs(tz)))
     return T
 
 def calculateEz(kx, ky, kz, Ex, Ey):

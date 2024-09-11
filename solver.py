@@ -8,7 +8,7 @@ from itertools import product
 import autograd.numpy as np
 
 USEGRAD = 1
-DEBUG_HARMONICS = 1
+DEBUG_HARMONICS = 5
 class Solver:
     """ Main class that invokes all methods necessary to solve an RCWA/TMM simulation
 
@@ -17,7 +17,7 @@ class Solver:
     :param n_harmonics: The number of harmonics in x, y to simulate (number of Fourier components). For planar films this should be 1. For 1D diffraction gratings this should be a single integer. For 2D periodic films this should be a 2-tuple. Must be an odd number.
     """
     def __init__(self, layer_stack, source, n_harmonics=1):
-        n_harmonics = DEBUG_HARMONICS
+        n_harmonics = 1
         self.atol = None
         self.rtol = None
         self.max_iters = None
@@ -150,9 +150,12 @@ class Solver:
         converged = False
         if self.iters >= self.max_iters:
             raise RuntimeError('Exceeded maximum number of iterations {self.max_iters} without convergence. Aborting.')
-
-        self.relative_error = np.abs((self.last_RTot - self.RTot)/self.last_RTot)
-        self.absolute_error = np.abs(self.RTot - self.last_RTot)
+        if USEGRAD:
+            self.relative_error = torch.abs((self.last_RTot - self.RTot)/self.last_RTot)
+            self.absolute_error = torch.abs(self.RTot - self.last_RTot)
+        else:
+            self.relative_error = np.abs((self.last_RTot - self.RTot)/self.last_RTot)
+            self.absolute_error = np.abs(self.RTot - self.last_RTot)
 
         if self.TMMSimulation and self.iters > 0:
             converged = True
@@ -210,8 +213,13 @@ class Solver:
                                                           self.KzReflectionRegion, self.layer_stack, self.n_harmonics)
         self.T = calculateDiffractionTransmissionEfficiency(self.tx, self.ty, self.tz, self.source,
                                                             self.KzTransmissionRegion, self.layer_stack, self.n_harmonics)
-        self.RTot = np.sum(self.R)
-        self.TTot = np.sum(self.T)
+        print(f"This is the value we calculated: {self.R}")
+        if USEGRAD:
+            self.RTot = torch.sum(self.R)
+            self.TTot = torch.sum(self.T)
+        else:
+            self.RTot = np.sum(self.R)
+            self.TTot = np.sum(self.T)
         self.conservation = self.RTot + self.TTot
 
         if self.TMMSimulation:
@@ -247,11 +255,11 @@ class Solver:
         """
         tempResults = {}
         # These next values should be gradient-dependent. Why are they not being copied?
-        tempResults['rx'], tempResults['ry'], tempResults['rz'] = deepcopy((self.rx, self.ry, self.rz))
-        tempResults['tx'], tempResults['ty'], tempResults['tz'] = deepcopy((self.tx, self.ty, self.tz))
-        tempResults['R'], tempResults['T'] = deepcopy((self.R, self.T))
+        tempResults['rx'], tempResults['ry'], tempResults['rz'] = (self.rx, self.ry, self.rz)
+        tempResults['tx'], tempResults['ty'], tempResults['tz'] = (self.tx, self.ty, self.tz)
+        tempResults['R'], tempResults['T'] = (self.R, self.T)
         tempResults['RTot'], tempResults['TTot'], tempResults['conservation'] = \
-                deepcopy((self.RTot, self.TTot, self.conservation))
+                (self.RTot, self.TTot, self.conservation)
         if USEGRAD:
             permittivityCellDataTensor = self.base_crystal.permittivityCellData.clone()
             permeabilityCellDataTensor = self.base_crystal.permeabilityCellData.clone()
@@ -264,8 +272,8 @@ class Solver:
             tempResults['crystal'].permeabilityCellData = permeabilityCellDataTensor
 
         tempResults['source'] = deepcopy(self.source)
-        tempResults['S'] = deepcopy(self.SGlobal)
-        tempResults['Si'] = deepcopy(self.Si)
+        tempResults['S'] = (self.SGlobal)
+        tempResults['Si'] = (self.Si)
 
         if self.TMMSimulation:
             tempResults['rTE'] = self.rTEM[0]
